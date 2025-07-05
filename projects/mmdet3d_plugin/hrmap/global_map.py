@@ -3,6 +3,67 @@ import torch
 from scipy.spatial.transform import Rotation as R
 from mmcv.runner import get_dist_info
 import torch.nn.functional as F
+import glob, os
+import pandas as pd
+from collections import defaultdict
+
+def get_city_code(run_path: str, run_id: str) -> str:
+    """
+    Parse the 3-letter city code (e.g. 'MIA') from a file name like
+    map/log_map_archive_<run_id>____MIA_city.pkl  inside <run_path>/map.
+    Returns None if no match is found.
+    """
+    map_dir = os.path.join(run_path, "map")
+    for fname in os.listdir(map_dir):
+        if fname.startswith(f"log_map_archive_{run_id}____") and "city" in fname:
+            # second token after '____' contains '<CITY>_city'
+            return fname.split("____")[1].split("_")[0]
+    return None
+
+
+def _auto_bounds_av2(split_root: str, split_name: str, city_list):
+    """
+    Scan   <split_root>/<split_name>/*/city_SE3_egovehicle.feather,
+    group poses by city, and return per-city min/max dicts.
+    """
+    xy_by_city = defaultdict(list)
+
+    pattern = os.path.join(split_root, split_name, "*", "city_SE3_egovehicle.feather")
+    for feather in glob.glob(pattern):
+        run_path = os.path.dirname(feather)          # .../<run_id>
+        run_id   = os.path.basename(run_path)
+        city     = get_city_code(run_path, run_id)
+        if city is None or (city_list and city not in city_list):
+            continue
+
+        df = pd.read_feather(feather)
+        xy_by_city[city].append(df[["tx_m", "ty_m"]].values)
+
+    if not xy_by_city:
+        raise ValueError(f"No pose data found in {split_root}/{split_name}")
+
+    min_dict, max_dict = {}, {}
+    for city, xy_list in xy_by_city.items():
+        all_xy = np.concatenate(xy_list, axis=0)
+        min_dict[city] = all_xy.min(0)
+        max_dict[city] = all_xy.max(0)
+
+    return min_dict, max_dict
+
+# ------------------------------------------------------------------
+def print_bounds(name, min_dict, max_dict, city_list):
+    """Print raw min/max bounds in author's city order (no safety margin)."""
+    print(f"{name}_min_lidar_loc = {{")
+    for city in city_list:
+        lo = min_dict[city]
+        print(f"    '{city}': np.array([{lo[0]:.8f}, {lo[1]:.8f}]) - bev_radius,")
+    print("}")
+
+    print(f"{name}_max_lidar_loc = {{")
+    for city in city_list:
+        hi = max_dict[city]
+        print(f"    '{city}': np.array([{hi[0]:.8f}, {hi[1]:.8f}]) + bev_radius,")
+    print("}")
 
 def gen_matrix(ego2global_rotation, ego2global_translation):
     rotation_xyz = np.roll(ego2global_rotation, shift=-1)
@@ -49,30 +110,56 @@ class GlobalMap:
         if dataset == 'av2':
             self.city_list = ['WDC', 'MIA', 'PAO', 'PIT', 'ATX', 'DTW']
             bev_radius = bev_radius * 5
-            self.train_min_lidar_loc = {'WDC': np.array([2327.78751629, 25.76974403]) - bev_radius,
-                                        'MIA': np.array([-1086.92985063, -464.15366362]) - bev_radius,
-                                        'PAO': np.array([-2225.36229607, -309.44287914]) - bev_radius,
-                                        'PIT': np.array([695.66044791, -443.89844576]) - bev_radius,
-                                        'ATX': np.array([589.98724063, -2444.36667873]) - bev_radius,
-                                        'DTW': np.array([-6111.0784155, 628.12019426]) - bev_radius}
-            self.train_max_lidar_loc = {'WDC': np.array([6951.32050819, 4510.96637507]) + bev_radius,
-                                        'MIA': np.array([6817.02338386, 4301.35442342]) + bev_radius,
-                                        'PAO': np.array([1646.099298, 2371.23617712]) + bev_radius,
-                                        'PIT': np.array([7371.45409948, 3314.83461676]) + bev_radius,
-                                        'ATX': np.array([3923.01840213, -1161.67712224]) + bev_radius,
-                                        'DTW': np.array([11126.80825267, 6045.01530619]) + bev_radius}
-            self.val_min_lidar_loc = {'WDC': np.array([1664.20793519, 344.29333819]) - bev_radius,
-                                      'MIA': np.array([-885.96340492, 257.79835061]) - bev_radius,
-                                      'PAO': np.array([-3050.01628955, -18.25448306]) - bev_radius,
-                                      'PIT': np.array([715.98981458, -136.13570664]) - bev_radius,
-                                      'ATX': np.array([840.66655697, -2581.61138577]) - bev_radius,
-                                      'DTW': np.array([36.60503836, 2432.04117045]) - bev_radius}
-            self.val_max_lidar_loc = {'WDC': np.array([6383.48765357, 4320.74293797]) + bev_radius,
-                                      'MIA': np.array([6708.79270643, 4295.23306249]) + bev_radius,
-                                      'PAO': np.array([654.02351246, 2988.66862304]) + bev_radius,
-                                      'PIT': np.array([7445.46486881, 3160.2406237]) + bev_radius,
-                                      'ATX': np.array([3726.62166299, -1296.12914951]) + bev_radius,
-                                      'DTW': np.array([10896.30840694, 6215.31771939]) + bev_radius}
+
+            # self.train_min_lidar_loc = {'WDC': np.array([2327.78751629, 25.76974403]) - bev_radius,
+            #                             'MIA': np.array([-1086.92985063, -464.15366362]) - bev_radius,
+            #                             'PAO': np.array([-2225.36229607, -309.44287914]) - bev_radius,
+            #                             'PIT': np.array([695.66044791, -443.89844576]) - bev_radius,
+            #                             'ATX': np.array([589.98724063, -2444.36667873]) - bev_radius,
+            #                             'DTW': np.array([-6111.0784155, 628.12019426]) - bev_radius}
+            # self.train_max_lidar_loc = {'WDC': np.array([6951.32050819, 4510.96637507]) + bev_radius,
+            #                             'MIA': np.array([6817.02338386, 4301.35442342]) + bev_radius,
+            #                             'PAO': np.array([1646.099298, 2371.23617712]) + bev_radius,
+            #                             'PIT': np.array([7371.45409948, 3314.83461676]) + bev_radius,
+            #                             'ATX': np.array([3923.01840213, -1161.67712224]) + bev_radius,
+            #                             'DTW': np.array([11126.80825267, 6045.01530619]) + bev_radius}
+            # self.val_min_lidar_loc = {'WDC': np.array([1664.20793519, 344.29333819]) - bev_radius,
+            #                           'MIA': np.array([-885.96340492, 257.79835061]) - bev_radius,
+            #                           'PAO': np.array([-3050.01628955, -18.25448306]) - bev_radius,
+            #                           'PIT': np.array([715.98981458, -136.13570664]) - bev_radius,
+            #                           'ATX': np.array([840.66655697, -2581.61138577]) - bev_radius,
+            #                           'DTW': np.array([36.60503836, 2432.04117045]) - bev_radius}
+            # self.val_max_lidar_loc = {'WDC': np.array([6383.48765357, 4320.74293797]) + bev_radius,
+            #                           'MIA': np.array([6708.79270643, 4295.23306249]) + bev_radius,
+            #                           'PAO': np.array([654.02351246, 2988.66862304]) + bev_radius,
+            #                           'PIT': np.array([7445.46486881, 3160.2406237]) + bev_radius,
+            #                           'ATX': np.array([3726.62166299, -1296.12914951]) + bev_radius,
+            #                           'DTW': np.array([10896.30840694, 6215.31771939]) + bev_radius}
+
+            # ---------- auto-compute raw bounds ------------------------
+            split_root = map_cfg['pose_root']
+            self.train_min_lidar_loc, self.train_max_lidar_loc = _auto_bounds_av2(
+                split_root, 'train', self.city_list)
+            self.val_min_lidar_loc,   self.val_max_lidar_loc   = _auto_bounds_av2(
+                split_root, 'val',   self.city_list)
+
+            print("=== auto-computed bounds (raw, no safety margin) ===")
+            print("bev_radius =", bev_radius)
+            print_bounds("self.train", self.train_min_lidar_loc, self.train_max_lidar_loc, self.city_list)
+            print_bounds("self.val",   self.val_min_lidar_loc,   self.val_max_lidar_loc,   self.city_list)
+            print("====================================================")
+
+            # now apply the safety margin so the rest of the code uses padded ranges
+            for c in self.city_list:
+                self.train_min_lidar_loc[c] -= bev_radius
+                self.train_max_lidar_loc[c] += bev_radius
+                self.val_min_lidar_loc[c]   -= bev_radius
+                self.val_max_lidar_loc[c]   += bev_radius
+            # ------------------------------------------------------
+
+            # exit()
+
+
         else:
             self.city_list = ['singapore-onenorth', 'boston-seaport',
                               'singapore-queenstown', 'singapore-hollandvillage']
@@ -212,6 +299,16 @@ class GlobalMap:
         bev_coord_mask = bev_coord_mask.reshape(self.bev_h, self.bev_w)
         index_h, index_w = torch.where(bev_coord_mask)
         local_map = self.global_map_dict[city_name][bev_index_w[index_h, index_w], bev_index_h[index_h, index_w], :]
+
+        # # >>> DEBUG – empty map?
+        # # if local_map.numel() == 0:
+        # print(
+        #     f"[EMPTY] city={city_name}  split={status}  "
+        #     f"lidar_xy=({trans[0,3]:.1f},{trans[1,3]:.1f})  "
+        #     f"bounds={city_min_bound.tolist()}→{city_max_bound.tolist()}"
+        # )
+        # exit()
+
         if self.map_type == torch.uint8:
             local_map_float = local_map.float()
             if self.fuse_method == 'prob':

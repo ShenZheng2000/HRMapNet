@@ -69,6 +69,9 @@ z_cfg = dict(
     gt_z_flag=False,
 )
 
+# NOTE: add data_root here and use it as pose_root
+data_root = 'data/argoverse2_geosplit/sensor/' # NOTE: change to geosplit data
+
 map_cfg = dict(
     pc_range=point_cloud_range,
     bev_h=bev_h_,
@@ -79,6 +82,7 @@ map_cfg = dict(
     load_map_path=None,
     save_map_path=None,
     update_map=True,
+    pose_root=data_root,
 )
 
 
@@ -261,7 +265,7 @@ model = dict(
             pc_range=point_cloud_range))))
 
 dataset_type = 'CustomAV2OfflineLocalMapDataset'
-data_root = 'data/argoverse2_geosplit/sensor/' # NOTE: change to geosplit data
+
 file_client_args = dict(backend='disk')
 
 train_pipeline = [

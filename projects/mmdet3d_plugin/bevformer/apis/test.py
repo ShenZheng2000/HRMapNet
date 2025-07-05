@@ -69,23 +69,7 @@ def custom_multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
     have_mask = False
     for i, data in enumerate(data_loader):
         with torch.no_grad():
-
-            try:
-                result = model(return_loss=False, rescale=True, **data)
-            except Exception as e:
-                print(f"[SKIP] inference error on batch {i}: {e}", flush=True)
-
-                bs = len(data['img_metas'])  # batch size
-                empty_det = {
-                    'boxes_3d': torch.empty((0, 7), dtype=torch.float32),
-                    'scores_3d': torch.empty((0,), dtype=torch.float32),
-                    'labels_3d': torch.empty((0,), dtype=torch.int64),
-                    'pts_3d': torch.empty((0, 5), dtype=torch.float32)  # Adjust shape if needed
-                }
-                bbox_results.extend([{'pts_bbox': empty_det}] * bs)
-                continue
-
-
+            result = model(return_loss=False, rescale=True, **data)
             # encode mask results
             if isinstance(result, dict):
                 if 'bbox_results' in result.keys():
