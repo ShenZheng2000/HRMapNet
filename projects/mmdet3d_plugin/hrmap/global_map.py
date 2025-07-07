@@ -143,11 +143,11 @@ class GlobalMap:
             self.val_min_lidar_loc,   self.val_max_lidar_loc   = _auto_bounds_av2(
                 split_root, 'val',   self.city_list)
 
-            print("=== auto-computed bounds (raw, no safety margin) ===")
-            print("bev_radius =", bev_radius)
-            print_bounds("self.train", self.train_min_lidar_loc, self.train_max_lidar_loc, self.city_list)
-            print_bounds("self.val",   self.val_min_lidar_loc,   self.val_max_lidar_loc,   self.city_list)
-            print("====================================================")
+            # print("=== auto-computed bounds (raw, no safety margin) ===")
+            # print("bev_radius =", bev_radius)
+            # print_bounds("self.train", self.train_min_lidar_loc, self.train_max_lidar_loc, self.city_list)
+            # print_bounds("self.val",   self.val_min_lidar_loc,   self.val_max_lidar_loc,   self.city_list)
+            # print("====================================================")
 
             # now apply the safety margin so the rest of the code uses padded ranges
             for c in self.city_list:

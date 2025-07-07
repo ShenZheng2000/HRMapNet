@@ -30,6 +30,8 @@ from av2.geometry.se3 import SE3
 import av2.geometry.interpolate as interp_utils
 import cv2
 
+from .nuscenes_offlinemap_dataset import add_rotation_noise, add_translation_noise
+
 def perspective(cam_coords, proj_mat):
     pix_coords = proj_mat @ cam_coords
     valid_idx = pix_coords[2, :] > 0
@@ -730,6 +732,8 @@ class CustomAV2OfflineLocalMapDataset(CustomNuScenesDataset):
                  eval_use_same_gt_sample_num_flag=False,
                  padding_value=-10000,
                  map_classes=None,
+                 noise='None',
+                 noise_std=0,
                  aux_seg = dict(
                     use_aux_seg=False,
                     bev_seg=False,
@@ -772,6 +776,8 @@ class CustomAV2OfflineLocalMapDataset(CustomNuScenesDataset):
                                                 max_z=self.max_z,
                                                 aux_seg=aux_seg)
         self.is_vis_on_test = False
+        self.noise = noise
+        self.noise_std = noise_std
 
     def load_annotations(self, ann_file):
         """Load annotations from ann_file.
@@ -974,6 +980,23 @@ class CustomAV2OfflineLocalMapDataset(CustomNuScenesDataset):
 
                 # ego2img, ego = lidar
                 ego2cam_rt = cam_info['extrinsics']
+
+                # >>> NOTE: inject noise just like NuScenes <<<
+                # print("self.noise: ", self.noise)
+                # print("self.noise_std: ", self.noise_std)
+
+                if self.noise == 'rotation':
+                    ego2cam_rt = add_rotation_noise(ego2cam_rt.copy(), std=self.noise_std)
+                elif self.noise == 'translation':
+                    ego2cam_rt = add_translation_noise(ego2cam_rt.copy(), std=self.noise_std)
+                elif self.noise == 'both':
+                    # self.noise_std must be a sequence: [rot_std, trans_std]
+                    rot_std, trans_std = self.noise_std
+
+                    tmp = add_rotation_noise(ego2cam_rt.copy(), std=rot_std)
+                    ego2cam_rt = add_translation_noise(tmp, std=trans_std)                    
+                # <<< end of insertion >>>
+
                 cam2ego_rts.append(np.matrix(ego2cam_rt).I)
 
                 intrinsic = cam_info['intrinsics']

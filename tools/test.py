@@ -8,6 +8,7 @@ import mmcv
 import os
 import torch
 import warnings
+warnings.filterwarnings("ignore")
 from mmcv import Config, DictAction
 from mmcv.cnn import fuse_conv_bn
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
@@ -125,6 +126,10 @@ def main():
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
+
+    # print(cfg.pretty_text)        # ← NOTE: prints the fully-merged config for quick debugging
+    # exit()
+
     # import modules from string list.
     if cfg.get('custom_imports', None):
         from mmcv.utils import import_modules_from_strings
