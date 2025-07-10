@@ -1,12 +1,14 @@
 # NOTE: experiment for various test-time pose
-# TODO; then do experiment for maptrv2
 run_noise_eval () {
     local CONFIG=$1
     local CKPT=$2
     local GPUS=${3:-8}
 
-    local TRANS_NOISES=(0 0.05 0.1 0.2)
-    local ROT_NOISES=(0 0.005 0.01 0.02)
+    # local TRANS_NOISES=(0 0.05 0.1 0.2)
+    # local ROT_NOISES=(0 0.005 0.01 0.02)
+  
+    local TRANS_NOISES=(0.4 0.8)
+    local ROT_NOISES=(0.04 0.08)
 
     for T in "${TRANS_NOISES[@]}"; do
         for R in "${ROT_NOISES[@]}"; do
@@ -31,4 +33,4 @@ run_noise_eval \
   work_dirs/hrmapnet_maptrv2_av2_r50_30ep_geosplit/epoch_30.pth \
   8
   
-# bash test_noise.sh | tee work_dirs/master_7_6.log
+# bash test_noise.sh | tee work_dirs/noise_7_8.log
