@@ -48,7 +48,8 @@ COLOR_MAPS_BGR = {
     'drivable_area': (171, 255, 255)
 }
 
-data_path_prefix = '/home/users/yunchi.zhang/project/MapTR' # project root
+# data_path_prefix = '/home/users/yunchi.zhang/project/MapTR' # project root
+data_path_prefix = "/home/shenzheng_google_com/Projects/Inf_Perception/Methods/HRMapNet"
 
 def remove_nan_values(uv):
     is_u_valid = np.logical_not(np.isnan(uv[:, 0]))
@@ -478,27 +479,75 @@ def main():
                         lineType=cv2.LINE_AA)
             rendered_cams_dict[key] = cam_img
 
-        new_image_height = 2048
-        new_image_width = 1550+2048*2
-        color = (255,255,255)
-        first_row_canvas = np.full((new_image_height,new_image_width, 3), color, dtype=np.uint8)
-        first_row_canvas[(2048-1550):, :2048,:] = rendered_cams_dict['ring_front_left']
-        first_row_canvas[:,2048:(2048+1550),:] = rendered_cams_dict['ring_front_center']
-        first_row_canvas[(2048-1550):,3598:,:] = rendered_cams_dict['ring_front_right']
+        # new_image_height = 2048
+        # new_image_width = 1550+2048*2
+        # color = (255,255,255)
+        # first_row_canvas = np.full((new_image_height,new_image_width, 3), color, dtype=np.uint8)
+        # first_row_canvas[(2048-1550):, :2048,:] = rendered_cams_dict['ring_front_left']
+        # first_row_canvas[:,2048:(2048+1550),:] = rendered_cams_dict['ring_front_center']
+        # first_row_canvas[(2048-1550):,3598:,:] = rendered_cams_dict['ring_front_right']
 
-        new_image_height = 1550
-        new_image_width = 2048*4
-        color = (255,255,255)
-        second_row_canvas = np.full((new_image_height,new_image_width, 3), color, dtype=np.uint8)
-        second_row_canvas[:,:2048,:] = rendered_cams_dict['ring_side_left']
-        second_row_canvas[:,2048:4096,:] = rendered_cams_dict['ring_rear_left']
-        second_row_canvas[:,4096:6144,:] = rendered_cams_dict['ring_rear_right']
-        second_row_canvas[:,6144:,:] = rendered_cams_dict['ring_side_right']
+        # Dynamically get height and width for each front cam
+        h_fc, w_fc = rendered_cams_dict['ring_front_center'].shape[:2]
+        h_fl, w_fl = rendered_cams_dict['ring_front_left'].shape[:2]
+        h_fr, w_fr = rendered_cams_dict['ring_front_right'].shape[:2]
 
-        resized_first_row_canvas = cv2.resize(first_row_canvas,(8192,2972))
-        full_canvas = np.full((2972+1550,8192,3),color,dtype=np.uint8)
-        full_canvas[:2972,:,:] = resized_first_row_canvas
-        full_canvas[2972:,:,:] = second_row_canvas
+        # Set canvas height to max of front cameras
+        first_row_h = max(h_fc, h_fl, h_fr)
+        first_row_w = w_fl + w_fc + w_fr
+        first_row_canvas = np.full((first_row_h, first_row_w, 3), 255, dtype=np.uint8)
+
+        # Place each image aligned at the bottom
+        first_row_canvas[first_row_h - h_fl:, :w_fl] = rendered_cams_dict['ring_front_left']
+        first_row_canvas[first_row_h - h_fc:, w_fl:w_fl + w_fc] = rendered_cams_dict['ring_front_center']
+        first_row_canvas[first_row_h - h_fr:, w_fl + w_fc:] = rendered_cams_dict['ring_front_right']
+
+
+
+        # new_image_height = 1550
+        # new_image_width = 2048*4
+        # color = (255,255,255)
+        # second_row_canvas = np.full((new_image_height,new_image_width, 3), color, dtype=np.uint8)
+        # second_row_canvas[:,:2048,:] = rendered_cams_dict['ring_side_left']
+        # second_row_canvas[:,2048:4096,:] = rendered_cams_dict['ring_rear_left']
+        # second_row_canvas[:,4096:6144,:] = rendered_cams_dict['ring_rear_right']
+        # second_row_canvas[:,6144:,:] = rendered_cams_dict['ring_side_right']
+
+        # Dynamically get heights and widths
+        cams = ['ring_side_left', 'ring_rear_left', 'ring_rear_right', 'ring_side_right']
+        cam_shapes = [rendered_cams_dict[cam].shape[:2] for cam in cams]
+        heights, widths = zip(*cam_shapes)
+
+        second_row_h = max(heights)
+        second_row_w = sum(widths)
+        second_row_canvas = np.full((second_row_h, second_row_w, 3), 255, dtype=np.uint8)
+
+        x_offset = 0
+        for cam, (h, w) in zip(cams, cam_shapes):
+            second_row_canvas[second_row_h - h:, x_offset:x_offset + w] = rendered_cams_dict[cam]
+            x_offset += w
+
+
+
+        # resized_first_row_canvas = cv2.resize(first_row_canvas,(8192,2972))
+        # full_canvas = np.full((2972+1550,8192,3),color,dtype=np.uint8)
+        # full_canvas[:2972,:,:] = resized_first_row_canvas
+        # full_canvas[2972:,:,:] = second_row_canvas
+        first_h, first_w = first_row_canvas.shape[:2]
+        second_h, second_w = second_row_canvas.shape[:2]
+        target_w = max(first_w, second_w)
+
+        if first_w < target_w:
+            pad_w = target_w - first_w
+            first_row_canvas = np.pad(first_row_canvas, ((0,0), (0,pad_w), (0,0)), constant_values=255)
+        if second_w < target_w:
+            pad_w = target_w - second_w
+            second_row_canvas = np.pad(second_row_canvas, ((0,0), (0,pad_w), (0,0)), constant_values=255)
+
+        full_canvas = np.vstack([first_row_canvas, second_row_canvas])
+
+
+
         cams_img_path = osp.join(sample_dir,'surroud_view.jpg')
         cv2.imwrite(cams_img_path, full_canvas,[cv2.IMWRITE_JPEG_QUALITY, 70])
 
